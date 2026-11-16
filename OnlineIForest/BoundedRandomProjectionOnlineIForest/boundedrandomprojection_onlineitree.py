@@ -2,7 +2,7 @@ from ..onlineitree import OnlineITree
 from ..onlineinode import OnlineINode
 from numpy import argsort, empty, inf, ndarray, sort, split, vstack, zeros
 from numpy.linalg import norm
-from numpy.random import choice, random, uniform
+from numpy.random import choice, normal, random, uniform
 
 
 class BoundedRandomProjectionOnlineITree(OnlineITree):
@@ -64,6 +64,18 @@ class BoundedRandomProjectionOnlineITree(OnlineITree):
             if self.metric == 'axisparallel':
                 projection_vector: ndarray[float] = zeros(data.shape[1])
                 projection_vector[choice(projection_vector.shape[0])]: float = 1.0
+            elif self.metric == 'oblique':
+                # [Modified] Oblique split: random direction instead of a single axis.
+                # Each component is divided by the node's extent along that axis so that features with
+                # large numeric ranges do not dominate the direction (scale invariance, computed online
+                # from the node's own bounding box, no global normalisation needed).
+                extent: ndarray[float] = data.max(axis=0) - data.min(axis=0)
+                active: ndarray[bool] = extent > 0
+                projection_vector: ndarray[float] = zeros(data.shape[1])
+                if active.any():
+                    projection_vector[active] = normal(size=active.sum()) / extent[active]
+                else:
+                    projection_vector[choice(projection_vector.shape[0])] = 1.0
             else:
                 raise ValueError('Bad metric {}'.format(self.metric))
             projection_vector: ndarray[float] = projection_vector / norm(projection_vector)
