@@ -48,7 +48,7 @@ def make_model(args):
         return OnlineIForest.create(
             iforest_type="boundedrandomprojectiononlineiforest",
             branching_factor=2,
-            metric="axisparallel",
+            metric=args.metric,
             num_trees=args.trees,
             max_leaf_samples=args.eta,
             window_size=args.window,
@@ -99,6 +99,8 @@ def main():
     p.add_argument("--window", type=int, default=2048, help="視窗大小 ω")
     p.add_argument("--eta", type=int, default=32, help="分裂門檻 η（max_leaf_samples）")
     p.add_argument("--trees", type=int, default=32, help="樹的數量 τ")
+    p.add_argument("--metric", default="axisparallel", choices=["axisparallel", "oblique"],
+                   help="切割方向：axisparallel（原版，沿單一座標軸）或 oblique（斜切）")
     p.add_argument("--no-shuffle", dest="shuffle", action="store_false",
                    help="不打亂資料（有時間順序的資料集要用）")
     p.add_argument("--max-features", type=int, default=None,
@@ -112,7 +114,7 @@ def main():
     name = Path(args.dataset).stem
     X, y = load_dataset(args.dataset, args.max_features)
     print(f"資料集 {name}：n={len(X)}, d={X.shape[1]}, 異常比例={y.mean():.2%}")
-    print(f"方法 {args.method}：ω={args.window}, η={args.eta}, τ={args.trees}, "
+    print(f"方法 {args.method}（{args.metric}）：ω={args.window}, η={args.eta}, τ={args.trees}, "
           f"batch={args.batch}, shuffle={args.shuffle}")
     if args.reset_at:
         if args.shuffle:
