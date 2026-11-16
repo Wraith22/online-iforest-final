@@ -72,10 +72,15 @@ def run_once(X, y, args, seed):
     batches = np.array_split(np.arange(len(X)), n_batches)
 
     scores = np.empty(len(X))
+    pending_resets = sorted(args.reset_at)
     start = time.perf_counter()
     for idx in batches:
         if len(idx) == 0:
             continue
+        # Oracle 實驗：資料流走到指定位置時，丟掉整個模型重新開始（模擬「完美的 drift 偵測器」）
+        while pending_resets and idx[0] >= pending_resets[0]:
+            model = make_model(args)
+            pending_resets.pop(0)
         model.learn_batch(X[idx])
         scores[idx] = model.score_batch(X[idx])
     elapsed = time.perf_counter() - start
@@ -98,6 +103,8 @@ def main():
                    help="不打亂資料（有時間順序的資料集要用）")
     p.add_argument("--max-features", type=int, default=None,
                    help="只取前 k 個特徵（原作者跑 INSECTS 只用前 10 個）")
+    p.add_argument("--reset-at", type=int, nargs="*", default=[],
+                   help="在這些位置重置模型（oracle drift 實驗用，需搭配 --no-shuffle）")
     p.add_argument("--out", default=str(PROJECT_ROOT / "results"))
     p.add_argument("--tag", default="", help="加在輸出檔名後面，區分不同設定")
     args = p.parse_args()
@@ -107,10 +114,18 @@ def main():
     print(f"資料集 {name}：n={len(X)}, d={X.shape[1]}, 異常比例={y.mean():.2%}")
     print(f"方法 {args.method}：ω={args.window}, η={args.eta}, τ={args.trees}, "
           f"batch={args.batch}, shuffle={args.shuffle}")
+    if args.reset_at:
+        if args.shuffle:
+            raise SystemExit("--reset-at 必須搭配 --no-shuffle，否則位置沒有意義")
+        print(f"Oracle 重置位置：{args.reset_at}")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"{name}_{args.method}{('_' + args.tag) if args.tag else ''}"
+
+    # 刪掉同名的舊結果，避免上次跑比較多次時留下的檔案混進這次的分析
+    for old in out_dir.glob(f"{prefix}_run*.npz"):
+        old.unlink()
 
     rows = []
     for i in range(args.runs):
