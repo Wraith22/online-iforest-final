@@ -1,15 +1,22 @@
 from ..onlineitree import OnlineITree
 from ..onlineinode import OnlineINode
-from numpy import argsort, empty, inf, ndarray, sort, split, vstack, zeros
+from numpy import argsort, empty, inf, ndarray, ones, sort, split, vstack, zeros
 from numpy.linalg import norm
 from numpy.random import choice, normal, random, uniform
 
 
 class BoundedRandomProjectionOnlineITree(OnlineITree):
     def __init__(self, max_leaf_samples: int, type: str, subsample: float, branching_factor: int, data_size: int,
-                 metric: str = 'axisparallel'):
+                 metric: str = 'axisparallel', depth_limit: str = 'code'):
         super().__init__(max_leaf_samples, type, subsample, branching_factor, data_size)
         self.metric: str = metric
+        # [Modified] Depth limit δ. The paper (Sec. 4.1, Table 3) sets δ = log2(ω/η), but the released code computes
+        # it as log(ω/η)/log(2·branching_factor) = log4(ω/η), i.e. half as deep (3 instead of 6 for ω=2048, η=32).
+        # 'code' keeps the released behaviour; 'paper' uses log2(ω/η) as written in the paper.
+        # get_random_path_length divides by log(2·b), so passing b = 1 gives log base 2.
+        if depth_limit not in ('code', 'paper'):
+            raise ValueError('Bad depth_limit {}'.format(depth_limit))
+        self.depth_limit_branching: float = 1 if depth_limit == 'paper' else branching_factor
 
     def learn(self, data: ndarray) -> 'BoundedRandomProjectionOnlineITree':
         # Subsample data in order to improve diversity among trees
@@ -18,13 +25,16 @@ class BoundedRandomProjectionOnlineITree(OnlineITree):
             # Update the counter of data seen so far
             self.data_size += data.shape[0]
             # Adjust depth limit according to data seen so far and branching factor
-            self.depth_limit: float = OnlineITree.get_random_path_length(self.branching_factor, self.max_leaf_samples,
-                                                                         self.data_size)
+            self.depth_limit: float = OnlineITree.get_random_path_length(self.depth_limit_branching,
+                                                                         self.max_leaf_samples, self.data_size)
             # Recursively update the tree
             self.next_node_index, self.root = self.recursive_build(data) if self.root is None else self.recursive_learn(self.root, data, self.next_node_index)
         return self
 
-    def recursive_learn(self, node: OnlineINode, data: ndarray, node_index: int) -> (int, OnlineINode):
+    def recursive_learn(self, node: OnlineINode, data: ndarray, node_index: int,
+                        constraints: tuple = ()) -> (int, OnlineINode):
+        # [Modified] constraints: the oblique cuts on the path from the root to this node, as
+        # (projection_vector, split_values, child_index) triples. Only used by 'oblique_constrained'.
         # Update the number of data seen so far by the current node
         node.data_size += data.shape[0]
         # Update the vectors of minimum and maximum values seen so far by the current node
@@ -37,7 +47,10 @@ class BoundedRandomProjectionOnlineITree(OnlineITree):
             if node.data_size >= self.max_leaf_samples*OnlineITree.get_multiplier(self.type, node.depth) and node.depth < self.depth_limit:
                 # Sample data_size points uniformly at random within the bounding box defined by the vectors of minimum
                 # and maximum values of data seen so far by the current node
-                data_sampled: ndarray = uniform(node.min_values, node.max_values, size=(node.data_size, data.shape[1]))
+                if self.metric == 'oblique_constrained' and constraints:
+                    data_sampled: ndarray = self.sample_in_region(node, constraints, data.shape[1])
+                else:
+                    data_sampled: ndarray = uniform(node.min_values, node.max_values, size=(node.data_size, data.shape[1]))
                 return self.recursive_build(data_sampled, depth=node.depth, node_index=node_index)
             else:
                 return node_index, node
@@ -47,8 +60,40 @@ class BoundedRandomProjectionOnlineITree(OnlineITree):
             partition_indices: list[ndarray[int]] = self.split_data(data, node.projection_vector, node.split_values)
             # Recursively update children
             for i, indices in enumerate(partition_indices):
-                node_index, node.children[i] = self.recursive_learn(node.children[i], data[indices], node_index)
+                child_constraints: tuple = constraints + ((node.projection_vector, node.split_values, i),) \
+                    if self.metric == 'oblique_constrained' else ()
+                node_index, node.children[i] = self.recursive_learn(node.children[i], data[indices], node_index,
+                                                                    child_constraints)
             return node_index, node
+
+    def sample_in_region(self, node: OnlineINode, constraints: tuple, dim: int) -> ndarray:
+        # [Modified] With oblique cuts, a node's region is (bounding box) ∩ (half-spaces of all ancestor cuts).
+        # The axis-aligned bounding box alone over-covers that region, so uniform sampling in the box puts
+        # synthetic points where no data can be. We rejection-sample: draw in the box, keep only points that
+        # fall on the correct side of every ancestor cut.
+        n: int = node.data_size
+        kept: list = []
+        total: int = 0
+        for _ in range(50):
+            candidates: ndarray = uniform(node.min_values, node.max_values, size=(n, dim))
+            mask: ndarray = ones(n, dtype=bool)
+            for projection_vector, split_values, child_index in constraints:
+                projected: ndarray = candidates @ projection_vector
+                if child_index > 0:
+                    mask &= projected >= split_values[child_index - 1]
+                if child_index < len(split_values):
+                    mask &= projected < split_values[child_index]
+            kept.append(candidates[mask])
+            total += int(mask.sum())
+            if total >= n:
+                break
+        points: ndarray = vstack(kept)
+        if points.shape[0] == 0:
+            # Region too thin to hit: fall back to the original behaviour
+            return uniform(node.min_values, node.max_values, size=(n, dim))
+        if points.shape[0] < n:
+            points = points[choice(points.shape[0], n)]
+        return points[:n]
 
     def recursive_build(self, data: ndarray, depth: int = 0, node_index: int = 0) -> (int, OnlineINode):
         # If there aren't enough samples to be split according to the max leaf samples or the depth limit has been
@@ -64,7 +109,7 @@ class BoundedRandomProjectionOnlineITree(OnlineITree):
             if self.metric == 'axisparallel':
                 projection_vector: ndarray[float] = zeros(data.shape[1])
                 projection_vector[choice(projection_vector.shape[0])]: float = 1.0
-            elif self.metric == 'oblique':
+            elif self.metric in ('oblique', 'oblique_constrained'):
                 # [Modified] Oblique split: random direction instead of a single axis.
                 # Each component is divided by the node's extent along that axis so that features with
                 # large numeric ranges do not dominate the direction (scale invariance, computed online
@@ -103,8 +148,8 @@ class BoundedRandomProjectionOnlineITree(OnlineITree):
             # Update the counter of data seen so far
             self.data_size -= data.shape[0]
             # Adjust depth limit according to data seen so far and branching factor
-            self.depth_limit: float = OnlineITree.get_random_path_length(self.branching_factor, self.max_leaf_samples,
-                                                                         self.data_size)
+            self.depth_limit: float = OnlineITree.get_random_path_length(self.depth_limit_branching,
+                                                                         self.max_leaf_samples, self.data_size)
             # Recursively update the tree
             self.root: OnlineINode = self.recursive_unlearn(self.root, data)
         return self

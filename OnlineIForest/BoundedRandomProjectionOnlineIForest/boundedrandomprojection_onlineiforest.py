@@ -9,7 +9,8 @@ from tqdm import tqdm
 
 class BoundedRandomProjectionOnlineIForest(OnlineIForest):
     def __init__(self, num_trees: int = 100, max_leaf_samples: int = 32, type: str = 'adaptive', subsample: float = 1.0,
-                 window_size: int = 2048, branching_factor: int = 2, metric: str = 'axisparallel', n_jobs: int = 1):
+                 window_size: int = 2048, branching_factor: int = 2, metric: str = 'axisparallel', n_jobs: int = 1,
+                 depth_limit: str = 'code'):
         super().__init__(num_trees, window_size, branching_factor, max_leaf_samples, type, subsample, n_jobs)
         self.metric: str = metric
         self.trees: list[OnlineITree] = [OnlineITree.create('boundedrandomprojectiononlineitree',
@@ -18,7 +19,8 @@ class BoundedRandomProjectionOnlineIForest(OnlineIForest):
                                                             subsample=self.subsample,
                                                             branching_factor=self.branching_factor,
                                                             data_size=self.data_size,
-                                                            metric=self.metric) for _ in range(self.num_trees)]
+                                                            metric=self.metric,
+                                                            depth_limit=depth_limit) for _ in range(self.num_trees)]
 
     def learn_batch(self, data: ndarray) -> 'BoundedRandomProjectionOnlineIForest':
         # Update the counter of data seen so far
