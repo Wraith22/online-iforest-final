@@ -2,12 +2,14 @@
 
 我們重現 Leveni 等人的 Online Isolation Forest（ICML 2024），再各改一個參數，觀察兩份資料的異常偵測效果。[實驗報告](docs/experiment_report.md) · [實驗數據](docs/experiment_evidence/README.md) · [論文原始碼](https://github.com/ineveLoppiliF/Online-Isolation-Forest)
 
-| 資料集 | 原版 | 最終設定 | 整體 ROC AUC 中位數 |
-|---|---|---|---:|
-| Annthyroid，30 個種子 | `code` 深度、視窗 2048 | `paper` 深度、視窗 2048 | 0.6721 → **0.7458** |
-| INSECTS，種子 0–4 | 視窗 2048 | 視窗 16384 | 0.7789 → **0.8267** |
+表內為「深度模式 / 訓練視窗」及整體 ROC AUC 中位數。
 
-Annthyroid 的最終設定就是先前較佳的 `paper`，兩者差值為 0。INSECTS 先前較佳的 4096 視窗是事先指定的驗證基準。16384 在新種子上 6/6 勝，整體 AUC 由 **0.7884 升至 0.8167**，平均滑動視窗 AUC 略降，運算時間增加。
+| 資料集 | 原始程式 | 先前較佳設定 | 最終設定 |
+|---|---|---|---|
+| Annthyroid，種子 0–29 | `code` / 2048<br>0.6721 | `paper` / 2048<br>0.7458 | `paper` / 2048<br>**0.7458** |
+| INSECTS，種子 0–4 | `code` / 2048<br>0.7789 | `code` / 4096<br>0.8101 | `code` / 16384<br>**0.8267** |
+
+`code` 是原始程式的樹深公式，`paper` 使用論文公式。Annthyroid 的先前較佳就是最終設定，AUC 差值為 0。INSECTS 用 4096 當驗證基準，16384 在種子 8–13 上 6/6 勝，整體 AUC 中位數由 **0.7884 升至 0.8167**，平均滑動視窗 AUC 略降，運算時間增加。
 
 ## 執行
 

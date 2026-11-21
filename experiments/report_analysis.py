@@ -417,14 +417,17 @@ def build_report():
         pair_rows.append(f"| {name} | {wins}/{len(delta)} ({100*wins/len(delta):.1f}%) | {losses} | {ties} | "
                          f"{delta.median():+.6f} | {p:.6g} |")
     main_rows = []
-    for name, orig, prior, finish in [
-        ("Annthyroid 0–29", ann_original, ann_paper, ann_paper),
-        ("INSECTS 0–4", historical[2048], historical[4096], historical[16384]),
-        ("INSECTS 8–13", heldout[2048], heldout[4096], heldout[16384]),
+    insect_windows = (2048, 4096, 16384)
+    insect_settings = tuple(f"`code` / {window}" for window in insect_windows)
+    for name, groups, settings in [
+        ("Annthyroid 0–29", (ann_original, ann_paper, ann_paper), ("`code` / 2048", "`paper` / 2048", "`paper` / 2048")),
+        ("INSECTS 0–4", tuple(historical[w] for w in insect_windows), insect_settings),
+        ("INSECTS 8–13", tuple(heldout[w] for w in insect_windows), insect_settings),
     ]:
-        delta = finish.auc.median() - prior.auc.median()
-        main_rows.append(f"| {name} | {orig.auc.median():.4f} | {prior.auc.median():.4f} | "
-                         f"{finish.auc.median():.4f} | {f'{delta:+.4f}' if delta else '0'} |")
+        medians = [group.auc.median() for group in groups]
+        cells = " | ".join(f"{setting}<br>{median:.4f}" for setting, median in zip(settings, medians))
+        delta = medians[2] - medians[1]
+        main_rows.append(f"| {name} | {cells} | {f'{delta:+.4f}' if delta else '0'} |")
     stat_rows = []
     for name, data in [
         ("Annthyroid 0–29 原版 code", ann_original),
