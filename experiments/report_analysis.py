@@ -33,6 +33,8 @@ FIGURES = ROOT / "figures"
 DOC = ROOT / "docs"
 WIDTH = 5000
 STEP = 1000
+# Known drift markers used by the original INSECTS reset experiment.
+DRIFT_POINTS = (51400, 74500, 101000, 142500, 152000)
 ATOL = 1e-13
 
 
@@ -363,8 +365,7 @@ def build_report():
     assert final["locked_before_validation"] and final["selected_window"] == 16384
     for observation in final["ranking"]:
         np.testing.assert_allclose(observation["median_auc"], sweep[observation["window"]].auc.median(), atol=ATOL, rtol=0)
-    drift_match = re.search(r"--reset-at ([0-9 ]+)\n", (ROOT / "README.md").read_text())
-    drifts = [int(x) for x in drift_match[1].split()]
+    drifts = list(DRIFT_POINTS)
     assert drifts == sorted(set(drifts)) and 0 < drifts[0] < drifts[-1] < len(insect_labels)
     assert not set(heldout[16384].auc.index) & set(sweep[16384].auc.index)
 
@@ -421,9 +422,9 @@ def build_report():
         ("INSECTS 0–4", historical[2048], historical[4096], historical[16384]),
         ("INSECTS 8–13", heldout[2048], heldout[4096], heldout[16384]),
     ]:
-        main_rows.append(f"| {name} | {orig.auc.median():.6f} | {prior.auc.median():.6f} | "
-                         f"{finish.auc.median():.6f} | {contrast(orig, prior)} | "
-                         f"{contrast(orig, finish)} | {contrast(prior, finish)} |")
+        delta = finish.auc.median() - prior.auc.median()
+        main_rows.append(f"| {name} | {orig.auc.median():.4f} | {prior.auc.median():.4f} | "
+                         f"{finish.auc.median():.4f} | {f'{delta:+.4f}' if delta else '0'} |")
     stat_rows = []
     for name, data in [
         ("Annthyroid 0–29 原版 code", ann_original),
@@ -462,7 +463,12 @@ def build_report():
         status = "一致" if actual == claim else "原始逐點分數與摘要相符，先前引用來源未確認"
         claim_rows.append(f"| {label} | {claim} | {actual} | {status} |")
 
+    ann_wins, _, _, _, ann_deltas = paired(ann_original, ann_paper)
+    insect_wins, _, _, insect_p, insect_deltas = paired(heldout[4096], heldout[16384])
     values = {
+        "ann_wins": f"{ann_wins}/{len(ann_deltas)}",
+        "insect_wins": f"{insect_wins}/{len(insect_deltas)}",
+        "insect_p": f"{insect_p:.6g}",
         "main_rows": "\n".join(main_rows),
         "stat_rows": "\n".join(stat_rows),
         "pair_rows": "\n".join(pair_rows),
