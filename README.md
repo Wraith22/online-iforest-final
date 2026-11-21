@@ -9,12 +9,14 @@
 
 ## 最終設定與結果
 
-| 資料集 | 最終設定 | 原版整體 ROC AUC | 最終整體 ROC AUC |
-|---|---|---:|---:|
-| Annthyroid（30 個種子） | depth limit = paper | 0.6721 | **0.7458** |
-| INSECTS（種子 0–4） | window = 16384 | 0.7789 | **0.8267** |
+| 資料集 | 原版設定 | 原版整體 ROC AUC | 最終設定 | 最終整體 ROC AUC |
+|---|---|---:|---|---:|
+| Annthyroid（30 個種子） | depth limit = code，window = 2048 | 0.6721 | depth limit = paper，window = 2048 | **0.7458** |
+| INSECTS（種子 0–4） | window = 2048 | 0.7789 | window = 16384 | **0.8267** |
 
-INSECTS 既有的 4096 視窗在種子 0–4 的中位數為 0.8101。另用未參與選擇的種子 8–13 驗證，16384 相較 4096 的整體 AUC 中位數為 **0.7884 → 0.8167**，6/6 勝。平均滑動視窗 AUC 為 0.8130 → 0.8106，同機單次學習加評分時間為 172.4 → 237.3 秒。
+Annthyroid 的先前較佳設定就是最終的 `paper` 深度，兩者共用同一組 30-seed 結果，AUC 差為 **0**。這裡唯一的比較是原版 `code` 對 `paper`。
+
+INSECTS 先前調整過的 4096 視窗在種子 0–4 的中位數為 0.8101。驗證計畫事前指定 **4096 為基準**。16384 在未參與選擇的種子 8–13 上，整體 AUC 中位數為 **0.7884 → 0.8167**，6/6 勝。原版 2048 在相同驗證種子上提供補充對照。相較 4096，16384 的平均滑動視窗 AUC 為 0.8130 → 0.8106，同機單次學習加評分時間為 172.4 → 237.3 秒。[驗證計畫](docs/experiment_evidence/plan.json)。
 
 [完整實驗報告](docs/experiment_report.md) · [逐 seed AUC、成本與驗證紀錄](docs/experiment_evidence/README.md) · [INSECTS AUC 時間曲線](figures/insects_auc_timeline.png) · [視窗趨勢](figures/insects_window_sweep.png)
 
