@@ -159,3 +159,6 @@ INSECTS,multiwindow,windows=2048+4096;trees=16+16;depth=code,1,0.817442603678622
 INSECTS,multiwindow,windows=2048+4096;trees=16+16;depth=code,2,0.7782201629327301,results/multiwindow_review/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_mw2048-4096_summary.csv
 INSECTS,multiwindow,windows=2048+4096;trees=16+16;depth=code,3,0.7033397547660326,results/multiwindow_review/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_mw2048-4096_summary.csv
 INSECTS,multiwindow,windows=2048+4096;trees=16+16;depth=code,4,0.7880991217074697,results/multiwindow_review/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_mw2048-4096_summary.csv
+INSECTS,baseline_fill,window=2048;depth=code,5,0.7554156991603509,results/experiment_report/seed_fill/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_w2048_seed5_summary.csv
+INSECTS,baseline_fill,window=2048;depth=code,6,0.7573180066615226,results/experiment_report/seed_fill/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_w2048_seed6_summary.csv
+INSECTS,baseline_fill,window=2048;depth=code,7,0.8020723087374035,results/experiment_report/seed_fill/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_w2048_seed7_summary.csv

@@ -169,28 +169,24 @@ def median_curve(data, cumulative=False):
     return data.curves[cumulative]
 
 
-def draw_timeline(groups, drifts):
-    fig, axes = plt.subplots(2, 2, figsize=(14, 8), layout="constrained", sharex=True, sharey=True)
+def draw_timeline(models, drifts):
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7), layout="constrained", sharex=True, sharey=True)
     colors = {2048: "#64748b", 4096: "#2563a6", 16384: "#c45324"}
-    for col, (cohort, models) in enumerate(groups.items()):
-        for row, cumulative in enumerate((True, False)):
-            ax = axes[row, col]
-            for window, data in models.items():
-                x, y = median_curve(data, cumulative)
-                if cumulative:
-                    np.testing.assert_allclose(y[-1], data.auc.median(), rtol=0, atol=ATOL)
-                ax.plot(x, y, color=colors[window], label=f"Window {window:,}", linewidth=1.65)
-            for i, drift in enumerate(drifts):
-                ax.axvline(drift, color="#333333", linestyle=":", alpha=0.55, linewidth=0.85,
-                           label="Drift marker" if i == 0 else None)
-            ax.grid(axis="y", alpha=0.25)
-            ax.set_title(f"{cohort} · {'Cumulative AUC' if cumulative else 'Centered-window AUC'}")
-            if row == 1:
-                ax.set_xlabel("Stream position (observations)")
-            if col == 0:
-                ax.set_ylabel("ROC AUC")
-    axes[0, 0].legend(loc="lower right", fontsize=8)
-    fig.suptitle("INSECTS: global ranking over time and local ranking near drift")
+    for ax, cumulative in zip(axes, (True, False)):
+        for window, data in models.items():
+            x, y = median_curve(data, cumulative)
+            if cumulative:
+                np.testing.assert_allclose(y[-1], data.auc.median(), rtol=0, atol=ATOL)
+            ax.plot(x, y, color=colors[window], label=f"Window {window:,}", linewidth=1.65)
+        for i, drift in enumerate(drifts):
+            ax.axvline(drift, color="#333333", linestyle=":", alpha=0.55, linewidth=0.85,
+                       label="Drift marker" if i == 0 else None)
+        ax.grid(axis="y", alpha=0.25)
+        ax.set_title("Cumulative AUC" if cumulative else "Centered-window AUC")
+        ax.set_ylabel("ROC AUC")
+    axes[-1].set_xlabel("Stream position (observations)")
+    axes[0].legend(loc="lower right", fontsize=8)
+    fig.suptitle("INSECTS: median ROC AUC across seeds 0–13")
     fig.savefig(FIGURES / "insects_auc_timeline.png", dpi=170)
     plt.close(fig)
 
@@ -362,6 +358,25 @@ def build_report():
         32768: group([prefix(OUT / "sweep", INSECTS, f"w32768_seed{i}") for i in range(5, 8)],
                      range(5, 8), insect_labels, expected_window=32768),
     }
+    original_fill = group(
+        [prefix(OUT / "seed_fill", INSECTS, f"w2048_seed{i}") for i in range(5, 8)],
+        range(5, 8), insect_labels, expected_window=2048,
+    )
+    middle = {2048: original_fill, 4096: sweep[4096], 16384: sweep[16384]}
+    pooled = {}
+    for window in historical:
+        parts = (historical[window], middle[window], heldout[window])
+        summary = pd.concat([part.summary for part in parts], ignore_index=True)
+        assert summary.seed.tolist() == list(range(14)), window
+        records = {seed: scores for part in parts for seed, scores in part.records.items()}
+        pooled[window] = Group(summary, records)
+
+    published = pd.read_csv(DOC / "experiment_evidence" / "paired_auc.csv")
+    published = published[(published.dataset == "INSECTS") &
+                          published.phase.isin(["reference", "selection", "validation", "baseline_fill"])]
+    for window, data in pooled.items():
+        scores = published[published.setting == f"window={window};depth=code"].set_index("seed").roc_auc.sort_index()
+        pd.testing.assert_series_equal(scores, data.auc, check_names=False, atol=ATOL, rtol=0)
     final = json.loads((INSECTS_TUNING / "locked-selection.json").read_text())
     assert final["locked_before_validation"] and final["selected_window"] == 16384
     for observation in final["ranking"]:
@@ -423,8 +438,7 @@ def build_report():
     insect_settings = tuple((4, window) for window in insect_windows)
     for name, groups, settings in [
         ("Annthyroid 0–29", (ann_original, ann_paper, ann_paper), ann_settings),
-        ("INSECTS 0–4", tuple(historical[w] for w in insect_windows), insect_settings),
-        ("INSECTS 8–13", tuple(heldout[w] for w in insect_windows), insect_settings),
+        ("INSECTS 0–13", tuple(pooled[w] for w in insect_windows), insect_settings),
     ]:
         medians = [group.auc.median() for group in groups]
         cells = " | ".join(
@@ -503,6 +517,7 @@ def build_report():
         "insect_delta": contrast(historical[4096], historical[16384]),
         "insect_heldout": f"{heldout[4096].auc.median():.4f} → {heldout[16384].auc.median():.4f}",
         "heldout_local": f"{heldout_local.at[4096, 'mean_window_median']:.4f} → {heldout_local.at[16384, 'mean_window_median']:.4f}",
+        "pooled_local": " → ".join(f"{median_curve(pooled[w])[1].mean():.4f}" for w in (4096, 16384)),
         "original_local": f"{median_curve(historical[4096])[1].mean():.4f} → {median_curve(historical[16384])[1].mean():.4f}",
         "label_facts": (
             f"| Annthyroid | {len(ann_labels):,} | {ann_dim} | {ann_dim} | {ann_labels.sum():,} ({ann_labels.mean():.2%}) |\n"
@@ -524,10 +539,10 @@ def build_report():
         "ann_path": ANN_PATH,
         "insect_path": INSECTS_PATH,
         "verified_runs": str(sum(len(g.records) for g in [ann_original, ann_paper, ann_multi, insect_multi,
-                            *historical.values(), *heldout.values(), *sweep.values(), *ann_alt.values()])),
+                            original_fill, *historical.values(), *heldout.values(), *sweep.values(), *ann_alt.values()])),
     }
 
-    return values, historical, heldout, sweep, drifts, (ann_original, ann_paper, *historical.values(), ann_labels, insect_labels)
+    return values, pooled, sweep, drifts, (ann_original, ann_paper, *historical.values(), ann_labels, insect_labels)
 
 
 def main():
@@ -538,7 +553,7 @@ def main():
     if args.inventory:
         write_inventory()
         return
-    values, historical, heldout, sweep, drifts, originals = build_report()
+    values, pooled, sweep, drifts, originals = build_report()
     cost_rows, repeats, cost = checks_and_costs(*originals)
     source_diff, source_count = source_assertion()
     values.update(
@@ -558,7 +573,7 @@ def main():
         assert file.read_text() == report, "Report is out of sync with artifacts"
     else:
         FIGURES.mkdir(exist_ok=True)
-        draw_timeline({"Reference seeds": historical, "Held-out seeds": heldout}, drifts)
+        draw_timeline(pooled, drifts)
         draw_sweep(sweep)
         write_inventory()
         file.write_text(report)
