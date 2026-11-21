@@ -2,6 +2,7 @@
   "audited_npz": 170,
   "profiled_settings": 7,
   "figures": [
+    "annthyroid_paired_auc.png",
     "insects_auc_timeline.png",
     "insects_window_sweep.png"
   ],
@@ -10,6 +11,7 @@
     "data/non-stationary/kqt/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv": "c38d9b89fb6b133db5b9fe4249621b056f18f177f5832cc8b1d66a840e4eb5d3"
   },
   "figure_sha256": {
+    "annthyroid_paired_auc.png": "d25323b283c5f3563535c3752c4f57d7ca4738aa1bf78b4ae39164d391b47c34",
     "insects_auc_timeline.png": "d1a91b664da7367681959e04d9a36c6ab39396e0411cc90fb0524949da913e15",
     "insects_window_sweep.png": "6a7523dc4541fb99e93ee1e658bff9a80e96887296d65e0b7d6533d09f615576"
   },

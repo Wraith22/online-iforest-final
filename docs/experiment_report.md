@@ -20,11 +20,15 @@ Online Isolation Forest 用多棵隨機樹隔離資料。越快被隔離的點�
 
 每格列出滿視窗時的深度上限、訓練視窗大小和整體 ROC AUC 中位數。原始公式（`code`）在 2048 筆時算出 3，論文公式（`paper`）算出 6。3.5 和 4.5 是分裂門檻，節點深度仍是整數。Annthyroid 的先前較佳與最終共用同一組 `paper` 結果。和原版 `code` 配對比較，`paper` 在 26/30 個種子上勝出。
 
+![Annthyroid 同種子 AUC 比較](../figures/annthyroid_paired_auc.png)
+
+*圖 1。每點代表一個種子。點在虛線上方代表改用深度上限 6 後 AUC 提高。*
+
 INSECTS 的原版、先前較佳設定和最終設定分別是 2048、4096 和 16384。表中是各設定 14 次實驗的 AUC 中位數。[逐 seed 數據](experiment_evidence/paired_auc.csv)
 
 ![INSECTS 累積與滑動視窗 AUC](../figures/insects_auc_timeline.png)
 
-*圖 1。種子 0–13 的 AUC 中位數。上排是累積 AUC，下排是滑動視窗 AUC。虛線標出資料分布改變的位置。*
+*圖 2。種子 0–13 的 AUC 中位數。上排是累積 AUC，下排是滑動視窗 AUC。虛線標出資料分布改變的位置。*
 
 從 4096 改為 16384 時，平均滑動視窗 AUC 為 **0.8189 → 0.8125**。相較 4096，16384 的資料保留上限是四倍。同機單次測量，學習和評分時間是 1.38 倍，整個行程的峰值記憶體相差 +0.23 MiB。[成本數據](experiment_evidence/cost/)
 

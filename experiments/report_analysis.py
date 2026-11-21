@@ -169,6 +169,30 @@ def median_curve(data, cumulative=False):
     return data.curves[cumulative]
 
 
+def draw_annthyroid(original, final):
+    before, after = original.auc, final.auc
+    pd.testing.assert_index_equal(before.index, after.index)
+    lower = min(before.min(), after.min()) - 0.025
+    upper = max(before.max(), after.max()) + 0.025
+    fig, ax = plt.subplots(figsize=(6.4, 5.6), layout="constrained")
+    ax.plot([lower, upper], [lower, upper], "--", color="#64748b", linewidth=1, label="Equal AUC")
+    for mask, label, color in (
+        (after > before, "Final higher", "#2563a6"),
+        (after < before, "Original higher", "#c45324"),
+        (after == before, "Tie", "#64748b"),
+    ):
+        if mask.any():
+            ax.scatter(before[mask], after[mask], color=color, s=42, edgecolors="white",
+                       linewidths=0.6, label=f"{label} ({mask.sum()})", zorder=3)
+    ax.set(xlim=(lower, upper), ylim=(lower, upper), aspect="equal",
+           xlabel="Original ROC AUC (depth limit 3)", ylabel="Final ROC AUC (depth limit 6)",
+           title=f"Annthyroid: paired ROC AUC ({len(before)} seeds)")
+    ax.grid(alpha=0.2)
+    ax.legend(loc="lower right", fontsize=9)
+    fig.savefig(FIGURES / "annthyroid_paired_auc.png", dpi=170)
+    plt.close(fig)
+
+
 def draw_timeline(models, drifts):
     fig, axes = plt.subplots(2, 1, figsize=(10, 7), layout="constrained", sharex=True, sharey=True)
     colors = {2048: "#64748b", 4096: "#2563a6", 16384: "#c45324"}
@@ -573,12 +597,13 @@ def main():
         assert file.read_text() == report, "Report is out of sync with artifacts"
     else:
         FIGURES.mkdir(exist_ok=True)
+        draw_annthyroid(*originals[:2])
         draw_timeline(pooled, drifts)
         draw_sweep(sweep)
         write_inventory()
         file.write_text(report)
     figures = re.findall(r"\]\(\.\./figures/([^/]+\.png)\)", report)
-    assert set(figures) == {"insects_auc_timeline.png", "insects_window_sweep.png"}
+    assert set(figures) == {"annthyroid_paired_auc.png", "insects_auc_timeline.png", "insects_window_sweep.png"}
     for name in figures:
         assert (FIGURES / name).stat().st_size > 4096
     verification = {"audited_npz": int(values["verified_runs"]) + len(cost),
