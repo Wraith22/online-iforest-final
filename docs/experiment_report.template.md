@@ -13,13 +13,13 @@ Online Isolation Forest 用多棵隨機樹隔離資料。越快被隔離的點�
 
 ## 結果
 
-| 資料集與種子 | 原始程式 | 先前較佳設定 | 最終設定 | AUC 差（最終 − 先前較佳） |
+| 資料集與種子 | 原始程式 | 先前較佳設定 | 最終設定 | AUC 差（最終 − 原版） |
 |---|---:|---:|---:|---:|
 {{main_rows}}
 
-每格列出滿視窗時的深度上限、訓練視窗大小和整體 ROC AUC 中位數。原始公式（`code`）在 2048 筆時算出 3，論文公式（`paper`）算出 6。3.5 和 4.5 是分裂門檻，節點深度仍是整數。Annthyroid 的先前較佳與最終共用同一組 `paper` 結果，差值為 **0**。和原版 `code` 配對比較，`paper` 在 {{ann_wins}} 個種子上勝出。
+每格列出滿視窗時的深度上限、訓練視窗大小和整體 ROC AUC 中位數。原始公式（`code`）在 2048 筆時算出 3，論文公式（`paper`）算出 6。3.5 和 4.5 是分裂門檻，節點深度仍是整數。Annthyroid 的先前較佳與最終共用同一組 `paper` 結果。和原版 `code` 配對比較，`paper` 在 {{ann_wins}} 個種子上勝出。
 
-INSECTS 的 **2048 是原版**，**4096 是事先指定的驗證基準**，16384 是最終設定。16384 在驗證種子上 {{insect_wins}} 勝，雙側配對 Wilcoxon p = {{insect_p}}。2048 在這組種子是補充對照。[驗證計畫](experiment_evidence/plan.json) · [逐 seed 數據](experiment_evidence/paired_auc.csv)
+INSECTS 的 **2048 是原版**，**4096 是事先指定的驗證基準**，16384 是最終設定。相較 4096，16384 的驗證組 AUC 中位數提高 {{insect_heldout_delta}}，{{insect_wins}} 勝，雙側配對 Wilcoxon p = {{insect_p}}。2048 在這組種子是補充對照。[驗證計畫](experiment_evidence/plan.json) · [逐 seed 數據](experiment_evidence/paired_auc.csv)
 
 ![INSECTS 累積與滑動視窗 AUC](../figures/insects_auc_timeline.png)
 

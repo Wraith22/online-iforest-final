@@ -431,7 +431,7 @@ def build_report():
             f"深度上限 {log(window / 32, base):g}，視窗 {window}<br>AUC {median:.4f}"
             for (base, window), median in zip(settings, medians)
         )
-        delta = medians[2] - medians[1]
+        delta = medians[2] - medians[0]
         main_rows.append(f"| {name} | {cells} | {f'{delta:+.4f}' if delta else '0'} |")
     stat_rows = []
     for name, data in [
@@ -477,6 +477,7 @@ def build_report():
         "ann_wins": f"{ann_wins}/{len(ann_deltas)}",
         "insect_wins": f"{insect_wins}/{len(insect_deltas)}",
         "insect_p": f"{insect_p:.6g}",
+        "insect_heldout_delta": f"{heldout[16384].auc.median() - heldout[4096].auc.median():.4f}",
         "main_rows": "\n".join(main_rows),
         "stat_rows": "\n".join(stat_rows),
         "pair_rows": "\n".join(pair_rows),
