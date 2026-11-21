@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import csv
 import hashlib
 import json
+from math import log
 from pathlib import Path
 import re
 
@@ -418,14 +419,18 @@ def build_report():
                          f"{delta.median():+.6f} | {p:.6g} |")
     main_rows = []
     insect_windows = (2048, 4096, 16384)
-    insect_settings = tuple(f"`code` / {window}" for window in insect_windows)
+    ann_settings = ((4, 2048), (2, 2048), (2, 2048))
+    insect_settings = tuple((4, window) for window in insect_windows)
     for name, groups, settings in [
-        ("Annthyroid 0–29", (ann_original, ann_paper, ann_paper), ("`code` / 2048", "`paper` / 2048", "`paper` / 2048")),
+        ("Annthyroid 0–29", (ann_original, ann_paper, ann_paper), ann_settings),
         ("INSECTS 0–4", tuple(historical[w] for w in insect_windows), insect_settings),
         ("INSECTS 8–13", tuple(heldout[w] for w in insect_windows), insect_settings),
     ]:
         medians = [group.auc.median() for group in groups]
-        cells = " | ".join(f"{setting}<br>{median:.4f}" for setting, median in zip(settings, medians))
+        cells = " | ".join(
+            f"深度上限 {log(window / 32, base):g}，視窗 {window}<br>AUC {median:.4f}"
+            for (base, window), median in zip(settings, medians)
+        )
         delta = medians[2] - medians[1]
         main_rows.append(f"| {name} | {cells} | {f'{delta:+.4f}' if delta else '0'} |")
     stat_rows = []
