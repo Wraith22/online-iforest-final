@@ -9,8 +9,12 @@ class OnlineIForest(ABC):
     def create(iforest_type: str = 'boundedrandomprojectiononlineiforest', **kwargs) -> 'OnlineIForest':
         # TODO: Find an alternative solution to overcome circular imports
         from .BoundedRandomProjectionOnlineIForest import BoundedRandomProjectionOnlineIForest
+        from .multiwindow_onlineiforest import MultiWindowOnlineIForest
         # Map iforest type to an iforest class
-        iforest_type_to_iforest_map: dict = {'boundedrandomprojectiononlineiforest': BoundedRandomProjectionOnlineIForest}
+        iforest_type_to_iforest_map: dict = {
+            'boundedrandomprojectiononlineiforest': BoundedRandomProjectionOnlineIForest,
+            'multiwindowonlineiforest': MultiWindowOnlineIForest,
+        }
         if iforest_type not in iforest_type_to_iforest_map:
             raise ValueError('Bad iforest type {}'.format(iforest_type))
         return iforest_type_to_iforest_map[iforest_type](**kwargs)

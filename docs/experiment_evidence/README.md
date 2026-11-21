@@ -1,0 +1,15 @@
+# 實驗結果與驗證摘要
+
+[回到完整實驗報告](../experiment_report.md)
+
+| 檔案 | 內容 |
+|---|---|
+| [paired_auc.csv](paired_auc.csv) | 160 筆逐 seed ROC AUC。project_summary 欄記錄原始摘要在實驗工作區的相對路徑 |
+| [INSECTS 選擇計畫](plan.json)及[鎖定紀錄](locked-selection.json) | 候選視窗與使用的 seeds，驗證前鎖定 16384 |
+| [INSECTS 驗證比較](validation-result.json) | 4096 與 16384 在六個驗證 seeds 的配對結果 |
+| [成本量測](cost/) | 各設定的 seed 0 AUC、執行時間、每筆攤銷時間與峰值 RSS |
+| [自動驗證摘要](verification.json)及[來源檔雜湊](source-before.sha256)及[當時的 diff 摘要](diff-before.txt) | 實驗工作區的重新計算、圖與資料雜湊，以及模型檔案盤點 |
+
+逐 seed CSV 的 phase 區分歷史對照、參數選擇、驗證、Annthyroid 的補充驗證與多視窗集成。可用 dataset、phase 和 seed 對齊各設定。
+
+完整 CSV 資料集、逐點 NPZ 和實驗日誌留在實驗工作區。`experiments/report_analysis.py` 的原始分數查核與重繪需要該工作區的原始輸入。從 GitHub 取得的版本可直接閱讀報告、圖與摘要，或按報告的指令使用原始資料重跑指定設定。

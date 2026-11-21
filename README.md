@@ -7,6 +7,24 @@
 
 ---
 
+## 最終設定與結果
+
+| 資料集 | 最終設定 | 原版整體 ROC AUC | 最終整體 ROC AUC |
+|---|---|---:|---:|
+| Annthyroid（30 個種子） | depth limit = paper | 0.6721 | **0.7458** |
+| INSECTS（種子 0–4） | window = 16384 | 0.7789 | **0.8267** |
+
+INSECTS 既有的 4096 視窗在種子 0–4 的中位數為 0.8101。另用未參與選擇的種子 8–13 驗證，16384 相較 4096 的整體 AUC 中位數為 **0.7884 → 0.8167**，6/6 勝。平均滑動視窗 AUC 為 0.8130 → 0.8106，同機單次學習加評分時間為 172.4 → 237.3 秒。
+
+[完整實驗報告](docs/experiment_report.md) · [逐 seed AUC、成本與驗證紀錄](docs/experiment_evidence/README.md) · [INSECTS AUC 時間曲線](figures/insects_auc_timeline.png) · [視窗趨勢](figures/insects_window_sweep.png)
+
+下載資料集後，在專案根目錄用以下指令重現最終設定。
+
+```bash
+python experiments/run_experiment.py --dataset data/stationary/ifor/Annthyroid.csv --depth-limit paper --runs 30 --tag final_paper
+python experiments/run_experiment.py --dataset data/non-stationary/kqt/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv --window 16384 --no-shuffle --max-features 10 --runs 5 --tag final_w16384
+```
+
 ## 1. 環境安裝
 
 需要 Python 3.10 以上與 git-lfs（原作者的資料集存在 git-lfs）。
@@ -14,7 +32,7 @@
 ```
 git lfs install
 git clone https://github.com/ineveLoppiliF/Online-Isolation-Forest.git
-git clone <本專案網址> online-iforest-final
+git clone https://github.com/Wraith22/online-iforest-final.git
 cd online-iforest-final
 python -m venv .venv
 .venv\Scripts\activate            # Windows；macOS/Linux 用 source .venv/bin/activate
@@ -41,6 +59,10 @@ experiments/
   compare.py                兩組結果的成對比較（Wilcoxon signed-rank 檢定）
   windowed_auc.py           滑動視窗 AUC 曲線（對照論文 Figure 7）
   ablation_leaf.py          消融實驗：只改葉節點深度補償
+  profile_report.py         單次時間、延遲與峰值 RSS 量測
+  report_analysis.py        報告生成與原始分數查核
+docs/                       完整報告、逐 seed 結果與驗證紀錄
+figures/                    INSECTS AUC 與視窗趨勢
 data/                       資料集（不上傳）
 results/                    實驗輸出（不上傳）
 ```
@@ -88,14 +110,14 @@ python experiments\ablation_leaf.py --dataset data\stationary\ifor\Annthyroid.cs
 python experiments\compare.py results\Annthyroid_oifor_summary.csv results\Annthyroid_oifor_leaflog2_summary.csv
 ```
 
-### 5.4 未成功的方向（負面結果）
+### 5.4 其他方向：斜切、重置與視窗大小
 
 ```
 # 斜切
 python experiments\run_experiment.py --dataset data\stationary\ifor\Annthyroid.csv --runs 30 --metric oblique --tag oblique
 python experiments\run_experiment.py --dataset data\stationary\ifor\Annthyroid.csv --runs 30 --metric oblique_constrained --tag oblique_constrained
 
-# drift：在已知的 drift 位置重置模型（oracle 上限）
+# drift：依既有 drift 標記測試重置模型
 python experiments\run_experiment.py --dataset data\non-stationary\kqt\insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv --runs 5 --no-shuffle --max-features 10 --tag oracle --reset-at 51400 74500 101000 142500 152000
 
 # drift：視窗大小（512、1024、4096 各跑一次）
@@ -113,6 +135,7 @@ python experiments\windowed_auc.py --runs "results\insects*_oifor_f10_run*.npz" 
 |---|---|---|---|
 | `depth_limit` | `code`（預設）/ `paper` | 樹深上限 δ。論文寫 log₂(ω/η) = 6，原始碼實際為 log₄(ω/η) = 3。`paper` 依論文計算 | tree、forest |
 | `metric` | `axisparallel`（預設）/ `oblique` / `oblique_constrained` | 切割方向。`oblique` 為隨機斜向切割，各分量除以節點在該軸的範圍以保持尺度不變；`oblique_constrained` 另在節點分裂取樣時，只保留落在所有祖先切割線正確一側的點 | tree |
+| `--windows` | 例如 `2048 4096`（預設停用） | 多視窗集成，將 `--trees` 的總樹數分配到各視窗，按樹數加權平均各森林正規化後的異常分數 | multiwindow、run_experiment |
 
 `run_experiment.py` 的 `--reset-at` 不改演算法本身，只在指定位置丟棄整個模型重新開始，用於 oracle 實驗。
 
@@ -165,7 +188,7 @@ python experiments\windowed_auc.py --runs "results\insects*_oifor_f10_run*.npz" 
 
 斜切在各資料集都較差。oIFOR 用軸平行的方框記錄節點範圍，斜切後方框會大於真實區域；但修正這一點（限制取樣）後仍然較差。推測這些資料集的異常點在單一特徵上就很極端，軸平行切割最有效。
 
-### 7.4 負面結果：drift 適應（INSECTS）
+### 7.4 drift 適應與視窗大小（INSECTS）
 
 | 設定 | 整條 AUC | 視窗 AUC 平均 |
 |---|---|---|
@@ -173,9 +196,34 @@ python experiments\windowed_auc.py --runs "results\insects*_oifor_f10_run*.npz" 
 | Oracle：在 5 個 drift 位置重置 | 0.787 | 0.809 |
 | ω = 512 | 0.770 | 0.809 |
 | ω = 1024 | 0.778 | — |
-| ω = 4096 | 0.810 | — |
+| ω = 4096 | 0.810 | 0.823 |
+| ω = 16384（最終） | 0.827 | 0.815 |
 
-即使 drift 偵測完美（oracle），視窗 AUC 仍沒有提升；縮小視窗也沒有幫助。drift 後的 AUC 下滑主要來自新分布本身較難區分異常，而不是模型適應太慢，因此「偵測 drift 再重置」的方向沒有改善空間。
+這組已知 drift 位置重置的實驗沒有提升視窗 AUC；縮小視窗也沒有幫助。不過，重置會丟掉歷史資料，並不是所有適應方法的性能上限，因此不能據此排除其他 drift 適應方法。ω = 4096 的整條 AUC 在 5 個種子上皆提升，但兩側精確 Wilcoxon p = 0.0625，且此視窗是看過結果後選出的，仍需要額外資料流或預先指定的種子驗證。
+
+### 7.5 多視窗集成（新實驗）
+
+實作與數據核對見 [改進方法與驗證紀錄](docs/improvements.md)。這是已測試的探索性對照，最終設定採用單一視窗。
+
+本次測試的多視窗 2048+4096（各 16 棵）在 Annthyroid 的 30 次中位數 AUC 為 0.6783，在 INSECTS 的 5 次為 0.7881；均高於原版 2048 視窗，但仍分別落後於既有論文深度與單視窗 4096。INSECTS 的視窗 AUC 平均為 0.8166，未改善原版的 0.8178，因此尚無證據支持改成預設方法。
+
+```bash
+# 總共 32 棵樹：2048 與 4096 視窗各 16 棵；不需要標籤或已知 drift 位置
+python experiments/run_experiment.py --dataset data/non-stationary/kqt/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv --runs 5 --no-shuffle --max-features 10 --windows 2048 4096 --tag mw2048-4096
+python experiments/compare.py results/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_f10_summary.csv results/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male_oifor_mw2048-4096_summary.csv
+python -m unittest discover -s tests -v
+```
+
+`--windows` 與 `--window` 互斥；若不指定 tag，會自動產生 `mw2048-4096`，以免覆蓋預設實驗。每次實驗另存 `_config.json` 記錄設定與評估順序；`_summary.csv` 和 `_run<i>.npz` 格式維持相容。
+
+### 7.6 最少參數的推薦設定
+
+以完整資料流 AUC 為目標，最後推薦每個資料集相較原版只改一個模型參數：
+
+- **Annthyroid：`--depth-limit paper`**，window 保持 2048。此次再調 window 至 8192 的驗證只有 6/10 勝、p=0.375，不作為新的保守推薦。
+- **INSECTS：`--window 16384`**，深度保持 code。先用種子 5–7 選視窗，再以未參與選擇的 8–13 驗證；相對既有較佳 window=4096，完整資料流 AUC 中位數 0.7884 → 0.8167、6/6 勝、雙側 p=0.03125（未校正）。但平均滑動視窗 AUC 略降，保留資料上限增加四倍，不能稱為全面優勝。
+
+完整推薦指令與限制見 [單參數調整紀錄](docs/window_tuning.md)。這輪不啟用多視窗方法，不調整樹數或葉節點門檻，也不修改全域預設。
 
 ## 8. 其他復現發現
 

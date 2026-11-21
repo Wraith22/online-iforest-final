@@ -18,6 +18,7 @@ Online Isolation Forest 評估腳本
     results/<資料集>_<方法>_run<i>.npz     每次執行的逐點分數與標籤（給畫圖用）
 """
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -44,14 +45,16 @@ def load_dataset(path, max_features=None):
 
 def make_model(args):
     if args.method == "oifor":
+        windows = getattr(args, "windows", None)
+        window_options = {"window_sizes": windows} if windows else {"window_size": args.window}
         # 參數與論文 Table 3、原作者腳本相同
         return OnlineIForest.create(
-            iforest_type="boundedrandomprojectiononlineiforest",
+            iforest_type="multiwindowonlineiforest" if windows else "boundedrandomprojectiononlineiforest",
             branching_factor=2,
             metric=args.metric,
             num_trees=args.trees,
             max_leaf_samples=args.eta,
-            window_size=args.window,
+            **window_options,
             type="adaptive",
             subsample=1.0,
             n_jobs=1,
@@ -97,7 +100,9 @@ def main():
     p.add_argument("--runs", type=int, default=5, help="重複次數（論文是 30）")
     p.add_argument("--seed", type=int, default=0, help="第 i 次執行使用 seed + i")
     p.add_argument("--batch", type=int, default=100)
-    p.add_argument("--window", type=int, default=2048, help="視窗大小 ω")
+    window_group = p.add_mutually_exclusive_group()
+    window_group.add_argument("--window", type=int, default=2048, help="視窗大小 ω")
+    window_group.add_argument("--windows", type=int, nargs="+", help="多視窗集成，例如 2048 4096；總樹數由 --trees 固定")
     p.add_argument("--eta", type=int, default=32, help="分裂門檻 η（max_leaf_samples）")
     p.add_argument("--trees", type=int, default=32, help="樹的數量 τ")
     p.add_argument("--metric", default="axisparallel", choices=["axisparallel", "oblique", "oblique_constrained"],
@@ -113,20 +118,35 @@ def main():
     p.add_argument("--out", default=str(PROJECT_ROOT / "results"))
     p.add_argument("--tag", default="", help="加在輸出檔名後面，區分不同設定")
     args = p.parse_args()
+    if args.windows is not None:
+        if any(w <= 0 for w in args.windows) or len(set(args.windows)) != len(args.windows):
+            p.error("--windows 必須為不重複的正整數")
+        if args.trees < len(args.windows):
+            p.error("--trees 不可小於視窗數")
+        if not args.tag:
+            args.tag = "mw" + "-".join(map(str, args.windows))
 
     name = Path(args.dataset).stem
     X, y = load_dataset(args.dataset, args.max_features)
     print(f"資料集 {name}：n={len(X)}, d={X.shape[1]}, 異常比例={y.mean():.2%}")
-    print(f"方法 {args.method}（{args.metric}，深度上限 {args.depth_limit}）：ω={args.window}, η={args.eta}, τ={args.trees}, "
+    print(f"方法 {args.method}（{args.metric}，深度上限 {args.depth_limit}）：ω={args.windows or args.window}, η={args.eta}, τ={args.trees}, "
           f"batch={args.batch}, shuffle={args.shuffle}")
     if args.reset_at:
         if args.shuffle:
             raise SystemExit("--reset-at 必須搭配 --no-shuffle，否則位置沒有意義")
         print(f"Oracle 重置位置：{args.reset_at}")
+    if args.windows:
+        counts = make_model(args).tree_counts
+        print(f"多視窗：{args.windows}，各視窗樹數：{counts}，總樹數：{sum(counts)}")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"{name}_{args.method}{('_' + args.tag) if args.tag else ''}"
+    config = vars(args).copy()
+    config["evaluation_order"] = "learn_then_score"
+    config["numpy_version"] = np.__version__
+    (out_dir / f"{prefix}_config.json").write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # 刪掉同名的舊結果，避免上次跑比較多次時留下的檔案混進這次的分析
     for old in out_dir.glob(f"{prefix}_run*.npz"):

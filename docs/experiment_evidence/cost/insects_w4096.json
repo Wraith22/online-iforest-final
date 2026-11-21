@@ -1,0 +1,21 @@
+{
+  "dataset": "data/non-stationary/kqt/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv",
+  "window": 4096,
+  "depth_limit": "code",
+  "seed": 0,
+  "n": 212514,
+  "trees": 32,
+  "eta": 32,
+  "metric": "axisparallel",
+  "batch": 100,
+  "shuffle": false,
+  "max_features": 10,
+  "auc": 0.798924478439039,
+  "learn_score_s": 172.42021069299994,
+  "load_through_auc_s": 174.514287643,
+  "amortized_us_per_row": 811.3357740807662,
+  "peak_rss_kib": 260948,
+  "numpy_version": "2.2.6",
+  "python_version": "3.12.14",
+  "system": "Linux-6.18.57-x86_64-with-glibc2.41"
+}

@@ -1,0 +1,13 @@
+{
+  "selected_window": 16384,
+  "baseline_window": 4096,
+  "n": 6,
+  "baseline_median": 0.7883536247136418,
+  "candidate_median": 0.8166547152988302,
+  "median_paired_difference": 0.021320011786478243,
+  "wins": 6,
+  "losses": 0,
+  "ties": 0,
+  "p_two_sided": 0.03125,
+  "recommendation": "candidate"
+}

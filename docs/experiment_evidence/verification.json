@@ -1,0 +1,18 @@
+{
+  "audited_npz": 167,
+  "profiled_settings": 7,
+  "figures": [
+    "insects_auc_timeline.png",
+    "insects_window_sweep.png"
+  ],
+  "dataset_sha256": {
+    "data/stationary/ifor/Annthyroid.csv": "8a890d0e7bef159585385774909a7390d47e15c7742dde25d6cf0d2ec944bc98",
+    "data/non-stationary/kqt/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv": "c38d9b89fb6b133db5b9fe4249621b056f18f177f5832cc8b1d66a840e4eb5d3"
+  },
+  "figure_sha256": {
+    "insects_auc_timeline.png": "a5ee4460e1fda3c46f2f90157a2abe06dafd37f91754114d7442466549a76736",
+    "insects_window_sweep.png": "6a7523dc4541fb99e93ee1e658bff9a80e96887296d65e0b7d6533d09f615576"
+  },
+  "protected_files": 13,
+  "report_matches_sources": true
+}

@@ -1,0 +1,19 @@
+{
+  "selected_window": 16384,
+  "ranking": [
+    {
+      "window": 16384,
+      "median_auc": 0.8076224335751437
+    },
+    {
+      "window": 8192,
+      "median_auc": 0.786090526540848
+    },
+    {
+      "window": 4096,
+      "median_auc": 0.78447582353649
+    }
+  ],
+  "locked_before_validation": true,
+  "utc_timestamp": "2026-11-17T09:19:26Z"
+}

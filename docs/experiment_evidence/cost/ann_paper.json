@@ -1,0 +1,21 @@
+{
+  "dataset": "data/stationary/ifor/Annthyroid.csv",
+  "window": 2048,
+  "depth_limit": "paper",
+  "seed": 0,
+  "n": 7200,
+  "trees": 32,
+  "eta": 32,
+  "metric": "axisparallel",
+  "batch": 100,
+  "shuffle": true,
+  "max_features": null,
+  "auc": 0.7116512213019054,
+  "learn_score_s": 5.7589849650000815,
+  "load_through_auc_s": 5.797405386000037,
+  "amortized_us_per_row": 799.859022916678,
+  "peak_rss_kib": 115444,
+  "numpy_version": "2.2.6",
+  "python_version": "3.12.14",
+  "system": "Linux-6.18.57-x86_64-with-glibc2.41"
+}
