@@ -92,7 +92,7 @@ def load_features(path, features):
     return X, y
 
 
-def run(dataset, mode, seed, out, data_sha256, *, adaptive_eta=None, window=2048):
+def run(dataset, mode, seed, out, data_sha256, *, adaptive_eta=None, window=2048, native_library=None):
     path = ROOT / "data" / DATASETS[dataset]
     slug = Path(DATASETS[dataset]).stem
     eta_tag = {None: "", "joint": "auto_eta_", "split-only": "split_only_eta_", "trimmed": "trimmed_eta_"}[adaptive_eta]
@@ -116,7 +116,11 @@ def run(dataset, mode, seed, out, data_sha256, *, adaptive_eta=None, window=2048
         method="oifor", windows=None, window=window, metric="axisparallel", trees=32,
         eta=32, depth_limit=mode, shuffle=not stream, batch=100, reset_at=[],
     )
-    if adaptive_eta:
+    if native_library is not None:
+        from native_benchmark import run_native
+
+        auc, scores, labels = run_native(X, y, window, mode, args.shuffle, seed, native_library)
+    elif adaptive_eta:
         model = AdaptiveEtaOnlineIForest(num_trees=args.trees, max_leaf_samples=args.eta, window_size=args.window,
                                          metric=args.metric, depth_limit=args.depth_limit,
                                          fixed_score_eta=adaptive_eta != "joint",
@@ -141,7 +145,10 @@ def run(dataset, mode, seed, out, data_sha256, *, adaptive_eta=None, window=2048
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--reference-execution", action="store_true", help="Use the standard executor and NumPy calls")
+    parser.add_argument("--runs", type=int, default=len(SEEDS), help="Number of consecutive seeds starting at 0")
+    execution = parser.add_mutually_exclusive_group()
+    execution.add_argument("--reference-execution", action="store_true", help="Use the standard executor and NumPy calls")
+    execution.add_argument("--native", action="store_true", help="Compile the fixed-eta benchmark with g++")
     parser.add_argument("--out", type=Path)
     comparison = parser.add_mutually_exclusive_group()
     comparison.add_argument("--adaptive-eta", choices=["joint", "split-only", "trimmed"],
@@ -151,6 +158,10 @@ def main():
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be positive")
+    if args.runs < 1:
+        parser.error("--runs must be positive")
+    if args.native and args.adaptive_eta:
+        parser.error("--native requires fixed eta")
     if args.candidate_window is not None and (args.candidate_window < 1 or args.candidate_window == 2048):
         parser.error("--candidate-window must be positive and differ from 2048")
     depth_out = ROOT / "results/depth_benchmark"
@@ -162,6 +173,11 @@ def main():
     if (args.adaptive_eta or args.candidate_window) and out.resolve() == depth_out.resolve():
         parser.error("Use a separate output directory for the comparison")
     out.mkdir(parents=True, exist_ok=True)
+    native_library = None
+    if args.native:
+        from native_benchmark import compile_benchmark
+
+        native_library = compile_benchmark(out)
 
     digests = {}
     for dataset, name in DATASETS.items():
@@ -177,9 +193,10 @@ def main():
         configs = [(mode, None, 2048, out) for mode in MODES]
     results = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=initialize_worker,
-                             initargs=(not args.reference_execution,)) as pool:
-        futures = [pool.submit(run, dataset, mode, seed, directory, digests[dataset], adaptive_eta=adaptive_eta, window=window)
-                   for dataset in order for seed in SEEDS for mode, adaptive_eta, window, directory in configs]
+                             initargs=(not (args.reference_execution or args.native),)) as pool:
+        futures = [pool.submit(run, dataset, mode, seed, directory, digests[dataset], adaptive_eta=adaptive_eta,
+                               window=window, native_library=native_library)
+                   for dataset in order for seed in range(args.runs) for mode, adaptive_eta, window, directory in configs]
         for future in as_completed(futures):
             row = future.result()
             results.append(row)

@@ -13,7 +13,7 @@ import pandas as pd
 from depth_benchmark import DATASETS, MODES, RESULT_DIRS, ROOT, SEEDS, window_comparison_name
 
 
-def summarize(path, eta_comparison=None, *, candidate_window=None):
+def summarize(path, eta_comparison=None, *, candidate_window=None, runs=len(SEEDS)):
     data = pd.read_csv(path)
     if candidate_window is not None:
         parameter, settings = "window", (2048, candidate_window)
@@ -38,7 +38,7 @@ def summarize(path, eta_comparison=None, *, candidate_window=None):
     else:
         parameter, settings = "depth_limit", MODES
     expected = pd.MultiIndex.from_product(
-        [DATASETS, settings, SEEDS], names=["dataset", parameter, "seed"]
+        [DATASETS, settings, range(runs)], names=["dataset", parameter, "seed"]
     )
     actual = data.set_index(expected.names).index
     if not actual.is_unique or len(actual) != len(expected) or set(actual) != set(expected):
@@ -70,7 +70,7 @@ def summarize(path, eta_comparison=None, *, candidate_window=None):
     return pd.DataFrame(rows)
 
 
-def plot_changes(rows, path, eta_comparison=None, *, candidate_window=None):
+def plot_changes(rows, path, eta_comparison=None, *, candidate_window=None, runs=len(SEEDS)):
     chart = rows.sort_values("delta")
     colors = ["#2563a6" if delta > 0 else "#c45324" for delta in chart.delta]
     fig, ax = plt.subplots(figsize=(8.7, 5.4), layout="constrained")
@@ -89,11 +89,13 @@ def plot_changes(rows, path, eta_comparison=None, *, candidate_window=None):
     else:
         ax.set(title="Effect of a deeper limit across 12 datasets",
                xlabel="ROC AUC change (depth 6 − depth 3 at full window)")
+    if runs != len(SEEDS):
+        ax.set_title(f"{ax.get_title()}\n{runs} paired seeds per dataset")
     fig.savefig(path, dpi=180)
     plt.close(fig)
 
 
-def write_report(rows, path, eta_comparison=None, *, candidate_window=None):
+def write_report(rows, path, eta_comparison=None, *, candidate_window=None, runs=len(SEEDS)):
     improved = int((rows.delta > 0).sum())
     declined = int((rows.delta < 0).sum())
     tied = len(rows) - improved - declined
@@ -154,15 +156,18 @@ def write_report(rows, path, eta_comparison=None, *, candidate_window=None):
         command_option = f" --adaptive-eta {eta_comparison}"
     else:
         title = "論文深度公式對照"
-        comparison = "兩組的視窗都固定為 2048，比較原始程式的 log₄ 和論文的 log₂。滿視窗時對應的深度門檻為 3 和 6。"
+        comparison = "兩組都用視窗 2048 和切分門檻 η＝32，比較原始程式的 log₄ 和論文的 log₂。滿視窗時對應的深度門檻為 3 和 6。"
         original, candidate = "原版深度 3", "論文深度 6"
         related = "Annthyroid 30 次結果和 INSECTS 視窗比較，見[個別實驗](experiment_report.md)。"
         command_option = ""
         artifact = "depth"
     eta_column = " 自動 η 範圍 |" if eta_comparison else ""
     eta_alignment = "---:|" if eta_comparison else ""
+    if runs != len(SEEDS):
+        command_option += f" --runs {runs}"
+    seed_text = f"0–{runs - 1}" if runs > 1 else "0"
     table = "\n".join(
-        f"| {row.dataset} | {row.samples:,} | {row.original:.4f} | {row.candidate:.4f} | {row.delta:+.4f} | {row.wins}/5 |"
+        f"| {row.dataset} | {row.samples:,} | {row.original:.4f} | {row.candidate:.4f} | {row.delta:+.4f} | {row.wins}/{runs} |"
         + (f" {row.eta_min}–{row.eta_max} |" if eta_comparison else "")
         for row in rows.itertuples()
     )
@@ -170,7 +175,7 @@ def write_report(rows, path, eta_comparison=None, *, candidate_window=None):
 
 {comparison}
 
-實驗使用 11 份靜態資料及 INSECTS。兩組都用 32 棵樹、每批約 100 筆，並用相同的種子 0–4 配對。靜態資料依種子打亂，INSECTS 保留原順序並使用前 10 個特徵。[資料來源](https://github.com/ineveLoppiliF/Online-Isolation-Forest/tree/e528c86b77219791d026d732f618efb0c7bde3c1/datasets)
+實驗使用 11 份靜態資料及 INSECTS。兩組都用 32 棵樹、每批約 100 筆，並用相同的種子 {seed_text} 配對。靜態資料依種子打亂，INSECTS 保留原順序並使用前 10 個特徵。[資料來源](https://github.com/ineveLoppiliF/Online-Isolation-Forest/tree/e528c86b77219791d026d732f618efb0c7bde3c1/datasets)
 
 ## 結果
 
@@ -178,13 +183,13 @@ def write_report(rows, path, eta_comparison=None, *, candidate_window=None):
 |---|---:|---:|---:|---:|---:|{eta_alignment}
 {table}
 
-表中 AUC 是各設定 5 次的整體 ROC AUC 中位數，差值為 {candidate} 減 {original}。勝出次數用相同種子逐對比較。
+表中 AUC 是各設定 {runs} 次的整體 ROC AUC 中位數，差值為 {candidate} 減 {original}。勝出次數用相同種子逐對比較。
 
 以「{criterion}」判斷整體改善。結果為 **{improved} 份提升、{declined} 份下降、{tied} 份持平**，差值中位數為 **{median_delta:+.4f}**。每份資料等權平均的差值為 {mean_delta:+.4f}。{conclusion}
 
 ![各資料集的 AUC 差值](../figures/{artifact}_benchmark.png)
 
-圖中右側代表 AUC 提升，左側代表下降。每份資料只跑 5 個種子，反映同一批資料在不同亂數下的結果。{related}
+圖中右側代表 AUC 提升，左側代表下降。每份資料{'只' if runs == len(SEEDS) else ''}跑 {runs} 個種子，反映同一批資料在不同亂數下的結果。{related}
 {variant_comparison}
 ## 重跑
 
@@ -201,10 +206,13 @@ python experiments/depth_benchmark_report.py{command_option}
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--runs", type=int, default=len(SEEDS), help="Number of expected seeds starting at 0")
     comparison = parser.add_mutually_exclusive_group()
     comparison.add_argument("--adaptive-eta", choices=["joint", "split-only", "trimmed"])
     comparison.add_argument("--candidate-window", type=int)
     args = parser.parse_args()
+    if args.runs < 1:
+        parser.error("--runs must be positive")
     if args.candidate_window is not None:
         if args.candidate_window < 1 or args.candidate_window == 2048:
             parser.error("--candidate-window must be positive and differ from 2048")
@@ -213,9 +221,11 @@ def main():
         artifact = {None: "depth", "joint": "eta_joint", "split-only": "eta_split", "trimmed": "eta"}[args.adaptive_eta]
         results_dir = RESULT_DIRS[args.adaptive_eta]
     source = args.input or ROOT / f"results/{results_dir}_benchmark/paired_auc.csv"
-    rows = summarize(source, args.adaptive_eta, candidate_window=args.candidate_window)
-    plot_changes(rows, ROOT / f"figures/{artifact}_benchmark.png", args.adaptive_eta, candidate_window=args.candidate_window)
-    write_report(rows, ROOT / f"docs/{artifact}_benchmark.md", args.adaptive_eta, candidate_window=args.candidate_window)
+    rows = summarize(source, args.adaptive_eta, candidate_window=args.candidate_window, runs=args.runs)
+    plot_changes(rows, ROOT / f"figures/{artifact}_benchmark.png", args.adaptive_eta,
+                 candidate_window=args.candidate_window, runs=args.runs)
+    write_report(rows, ROOT / f"docs/{artifact}_benchmark.md", args.adaptive_eta,
+                 candidate_window=args.candidate_window, runs=args.runs)
     evidence = ROOT / f"docs/experiment_evidence/{artifact}_seed_auc.csv"
     if source.resolve() != evidence.resolve():
         shutil.copyfile(source, evidence)
