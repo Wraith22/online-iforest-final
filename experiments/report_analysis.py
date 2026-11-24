@@ -456,25 +456,18 @@ def build_report():
         wins, losses, ties, p, delta = paired(before, after)
         pair_rows.append(f"| {name} | {wins}/{len(delta)} ({100*wins/len(delta):.1f}%) | {losses} | {ties} | "
                          f"{delta.median():+.6f} | {p:.6g} |")
-    main_rows = []
     insect_windows = (2048, 4096, 16384)
-    ann_settings = ((4, 2048), (2, 2048), (2, 2048))
-    insect_settings = tuple((4, window) for window in insect_windows)
-    for name, groups, settings in [
-        ("Annthyroid 0–29", (ann_original, ann_paper, ann_paper), ann_settings),
-        ("INSECTS 0–13", tuple(pooled[w] for w in insect_windows), insect_settings),
-    ]:
-        medians = [group.auc.median() for group in groups]
-        cells = " | ".join(
-            f"深度上限 {log(window / 32, base):g}，視窗 {window}<br>AUC {median:.4f}"
-            for (base, window), median in zip(settings, medians)
-        )
-        delta = medians[2] - medians[0]
-        main_rows.append(f"| {name} | {cells} | {f'{delta:+.4f}' if delta else '0'} |")
+    medians = [pooled[window].auc.median() for window in insect_windows]
+    cells = " | ".join(
+        f"深度上限 {log(window / 32, 4):g}，視窗 {window}<br>AUC {median:.4f}"
+        for window, median in zip(insect_windows, medians)
+    )
+    delta = medians[-1] - medians[0]
+    insect_row = f"| INSECTS 0–13 | {cells} | {f'{delta:+.4f}' if delta else '0'} |"
     stat_rows = []
     for name, data in [
         ("Annthyroid 0–29 原版 code", ann_original),
-        ("Annthyroid 0–29 既有較佳／最終 paper", ann_paper),
+        ("Annthyroid 0–29 論文公式 paper", ann_paper),
         *[(f"INSECTS {cohort} window {w}", data) for cohort, cohort_data in
           [("0–4", historical), ("8–13", heldout)] for w, data in cohort_data.items()],
     ]:
@@ -516,7 +509,7 @@ def build_report():
         "insect_wins": f"{insect_wins}/{len(insect_deltas)}",
         "insect_p": f"{insect_p:.6g}",
         "insect_heldout_delta": f"{heldout[16384].auc.median() - heldout[4096].auc.median():.4f}",
-        "main_rows": "\n".join(main_rows),
+        "insect_row": insect_row,
         "stat_rows": "\n".join(stat_rows),
         "pair_rows": "\n".join(pair_rows),
         "sweep_rows": "\n".join(sweep_rows),

@@ -1,4 +1,4 @@
-"""Compare the original depth limit and the paper depth limit on the 12 datasets."""
+"""Compare the paper depth formula or adaptive eta against the original program."""
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -9,10 +9,12 @@ from importlib import import_module
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
 from run_experiment import load_dataset, run_once
+from OnlineIForest.adaptive_eta_onlineiforest import AdaptiveEtaOnlineIForest
 from OnlineIForest.onlineitree import OnlineITree
 
 
@@ -34,6 +36,7 @@ DATASETS = {
 }
 SEEDS = range(5)
 MODES = ("code", "paper")
+RESULT_DIRS = {None: "depth", "joint": "eta", "split-only": "eta_split", "trimmed": "eta_trimmed"}
 FIELDS = ("dataset", "depth_limit", "seed", "auc", "rows", "features", "anomalies", "data_sha256")
 PACKAGE = "OnlineIForest.BoundedRandomProjectionOnlineIForest"
 
@@ -85,11 +88,15 @@ def load_features(path, features):
     return X, y
 
 
-def run(dataset, mode, seed, out, data_sha256):
+def run(dataset, mode, seed, out, data_sha256, *, adaptive_eta=None):
     path = ROOT / "data" / DATASETS[dataset]
     slug = Path(DATASETS[dataset]).stem
-    checkpoint = out / f"{slug}_{mode}_{seed}.json"
+    eta_tag = {None: "", "joint": "auto_eta_", "split-only": "split_only_eta_", "trimmed": "trimmed_eta_"}[adaptive_eta]
+    name = f"{slug}_{mode}_{eta_tag}{seed}"
+    checkpoint = out / f"{name}.json"
     expected = {"dataset": dataset, "depth_limit": mode, "seed": seed, "data_sha256": data_sha256}
+    if adaptive_eta:
+        expected["eta_policy"] = "adaptive"
     if checkpoint.exists():
         result = json.loads(checkpoint.read_text())
         if all(result.get(key) == value for key, value in expected.items()) and 0 <= result["auc"] <= 1:
@@ -102,10 +109,22 @@ def run(dataset, mode, seed, out, data_sha256):
         method="oifor", windows=None, window=2048, metric="axisparallel", trees=32,
         eta=32, depth_limit=mode, shuffle=not stream, batch=100, reset_at=[],
     )
-    auc, _, scores, labels = run_once(X, y, args, seed)
+    if adaptive_eta:
+        model = AdaptiveEtaOnlineIForest(num_trees=args.trees, max_leaf_samples=args.eta, window_size=args.window,
+                                         metric=args.metric, depth_limit=args.depth_limit,
+                                         fixed_score_eta=adaptive_eta != "joint",
+                                         trimmed_range=adaptive_eta == "trimmed")
+        # Reuse the same shuffle, batches, and learn/score order as the fixed-eta run.
+        with patch("run_experiment.make_model", return_value=model):
+            auc, _, scores, labels = run_once(X, y, args, seed)
+        eta_history = list(model.eta_counts.elements())
+    else:
+        auc, _, scores, labels = run_once(X, y, args, seed)
     if len(scores) != len(y) or not np.isfinite(scores).all():
         raise ValueError(f"Invalid scores: {dataset}, {mode}, seed {seed}")
     result = dict(expected, auc=auc, rows=len(y), features=X.shape[1], anomalies=int(labels.sum()))
+    if adaptive_eta:
+        result.update(eta_min=min(eta_history), eta_max=max(eta_history), eta_median=float(np.median(eta_history)))
     temp = checkpoint.with_suffix(".tmp")
     temp.write_text(json.dumps(result) + "\n")
     temp.replace(checkpoint)
@@ -116,11 +135,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--reference-execution", action="store_true", help="Use the standard executor and NumPy calls")
-    parser.add_argument("--out", type=Path, default=ROOT / "results" / "depth_benchmark")
+    parser.add_argument("--out", type=Path)
+    parser.add_argument("--adaptive-eta", choices=["joint", "split-only", "trimmed"],
+                        help="Compare an automatic eta policy with fixed eta 32")
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be positive")
-    args.out.mkdir(parents=True, exist_ok=True)
+    depth_out = ROOT / "results/depth_benchmark"
+    out = args.out or ROOT / f"results/{RESULT_DIRS[args.adaptive_eta]}_benchmark"
+    if args.adaptive_eta and out.resolve() == depth_out.resolve():
+        parser.error("Use a separate output directory for the eta comparison")
+    out.mkdir(parents=True, exist_ok=True)
 
     digests = {}
     for dataset, name in DATASETS.items():
@@ -129,19 +154,36 @@ def main():
 
     # Start long data streams first to keep workers busy until the final short runs.
     order = sorted(DATASETS, key=lambda name: (ROOT / "data" / DATASETS[name]).stat().st_size, reverse=True)
-    jobs = [(dataset, mode, seed, args.out, digests[dataset]) for dataset in order for seed in SEEDS for mode in MODES]
+    if args.adaptive_eta:
+        depth_out.mkdir(parents=True, exist_ok=True)
+        configs = [("code", None, depth_out), ("code", args.adaptive_eta, out)]
+    else:
+        configs = [(mode, None, out) for mode in MODES]
     results = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=initialize_worker,
                              initargs=(not args.reference_execution,)) as pool:
-        futures = [pool.submit(run, *job) for job in jobs]
+        futures = [pool.submit(run, dataset, mode, seed, directory, digests[dataset], adaptive_eta=adaptive_eta)
+                   for dataset in order for seed in SEEDS for mode, adaptive_eta, directory in configs]
         for future in as_completed(futures):
             row = future.result()
             results.append(row)
-            print(f"{len(results):3}/{len(jobs)} {row['dataset']:17} {row['depth_limit']:5} seed={row['seed']} AUC={row['auc']:.8f}", flush=True)
+            eta_policy = row.get("eta_policy", "fixed")
+            print(f"{len(results):3}/{len(futures)} {row['dataset']:17} {row['depth_limit']:5} "
+                  f"eta={eta_policy:8} seed={row['seed']} AUC={row['auc']:.8f}", flush=True)
 
-    results.sort(key=lambda row: (list(DATASETS).index(row["dataset"]), row["seed"], MODES.index(row["depth_limit"])))
-    with (args.out / "paired_auc.csv").open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=FIELDS, lineterminator="\n")
+    results.sort(key=lambda row: (list(DATASETS).index(row["dataset"]), row["seed"], MODES.index(row["depth_limit"]),
+                                  row.get("eta_policy") == "adaptive"))
+    fields = FIELDS
+    if args.adaptive_eta:
+        fields = (*FIELDS, "eta_policy", "score_eta", "eta_span", "eta_min", "eta_max", "eta_median")
+        for row in results:
+            if "eta_policy" not in row:
+                row.update(eta_policy="fixed", score_eta="fixed", eta_span="none", eta_min=32, eta_max=32, eta_median=32)
+            else:
+                row["score_eta"] = "adaptive" if args.adaptive_eta == "joint" else "fixed"
+                row["eta_span"] = "trimmed" if args.adaptive_eta == "trimmed" else "full"
+    with (out / "paired_auc.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(results)
 
