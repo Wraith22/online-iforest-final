@@ -1,6 +1,8 @@
 # Online Isolation Forest 期末專題
 
-我們重現 Leveni 等人的 Online Isolation Forest（ICML 2024），再各改一個參數，觀察兩份資料的異常偵測效果。[實驗報告](docs/experiment_report.md) · [實驗數據](docs/experiment_evidence/README.md) · [論文原始碼](https://github.com/ineveLoppiliF/Online-Isolation-Forest)
+本專題重現 Leveni 等人的 Online Isolation Forest（ICML 2024），並在 12 份資料上比較同一個深度設定。[12 資料集實驗](docs/depth_benchmark.md) · [Annthyroid 與 INSECTS 報告](docs/experiment_report.md) · [實驗數據](docs/experiment_evidence/README.md) · [論文原始碼](https://github.com/ineveLoppiliF/Online-Isolation-Forest)
+
+## 個別資料集設定
 
 表內為滿視窗時的深度上限、訓練視窗大小和整體 ROC AUC 中位數。
 

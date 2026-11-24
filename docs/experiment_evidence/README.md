@@ -4,6 +4,7 @@
 
 | 檔案 | 內容 |
 |---|---|
+| [depth_seed_auc.csv](depth_seed_auc.csv) | 12 份資料的共用深度比較，每份資料 5 個配對種子。[實驗報告](../depth_benchmark.md) |
 | [paired_auc.csv](paired_auc.csv) | 163 筆逐 seed ROC AUC。project_summary 欄記錄原始摘要在實驗工作區的相對路徑 |
 | [INSECTS 選擇計畫](plan.json)及[鎖定紀錄](locked-selection.json) | 候選視窗與使用的 seeds，驗證前鎖定 16384 |
 | [INSECTS 驗證比較](validation-result.json) | 4096 與 16384 在六個驗證 seeds 的配對結果 |
