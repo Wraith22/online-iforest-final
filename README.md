@@ -2,6 +2,8 @@
 
 本專題重現 Leveni 等人的 Online Isolation Forest（ICML 2024），並在 12 份資料上比較自動選擇與固定切分門檻 η。[自動 η 實驗](docs/eta_benchmark.md) · [論文深度對照](docs/depth_benchmark.md) · [個別資料集報告](docs/experiment_report.md) · [實驗數據](docs/experiment_evidence/README.md) · [論文原始碼](https://github.com/ineveLoppiliF/Online-Isolation-Forest)
 
+用模擬異常選擇 η 的實驗涵蓋 7 份資料。[校準方法與結果](docs/eta_calibration.md)
+
 ## 個別資料集設定
 
 Annthyroid 用 30 個種子重現論文的深度公式。視窗固定 2048，滿視窗時的深度門檻由原始程式的 3 變為論文的 6，整體 ROC AUC 中位數由 **0.6721 提高至 0.7458**。
