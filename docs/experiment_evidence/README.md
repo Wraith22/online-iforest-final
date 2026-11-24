@@ -4,6 +4,7 @@
 
 | 檔案 | 內容 |
 |---|---|
+| [window_seed_auc.csv](window_seed_auc.csv) | 12 份資料以相同種子比較訓練視窗 2048 和 4096。[視窗報告](../window_benchmark.md) |
 | [eta_calibration_auc.csv](eta_calibration_auc.csv) | 7 份資料的逐種子 AUC、選出的 η 與兩類模擬測試結果。[校準報告](../eta_calibration.md) |
 | [eta_seed_auc.csv](eta_seed_auc.csv) | 以百分位範圍估計 η，記錄 12 份資料的逐種子 AUC 和 η 範圍。[實驗報告](../eta_benchmark.md) |
 | [eta_split_seed_auc.csv](eta_split_seed_auc.csv) | 比較以全距估計 η 並固定評分尺度的版本。[實驗報告](../eta_split_benchmark.md) |

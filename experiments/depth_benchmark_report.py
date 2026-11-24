@@ -1,6 +1,7 @@
 """Generate a report and plot from the completed benchmark."""
 
 import argparse
+from math import log
 from pathlib import Path
 import shutil
 
@@ -9,13 +10,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from depth_benchmark import DATASETS, MODES, RESULT_DIRS, ROOT, SEEDS
+from depth_benchmark import DATASETS, MODES, RESULT_DIRS, ROOT, SEEDS, window_comparison_name
 
 
-def summarize(path, eta_comparison=None):
+def summarize(path, eta_comparison=None, *, candidate_window=None):
     data = pd.read_csv(path)
-    parameter, settings = ("eta_policy", ("fixed", "adaptive")) if eta_comparison else ("depth_limit", MODES)
-    if eta_comparison:
+    if candidate_window is not None:
+        parameter, settings = "window", (2048, candidate_window)
+        if not data.depth_limit.eq("code").all():
+            raise ValueError("Both windows must use the original depth formula")
+    elif eta_comparison:
+        parameter, settings = "eta_policy", ("fixed", "adaptive")
         if not data.depth_limit.eq("code").all():
             raise ValueError("Both eta policies must use the original depth formula")
         expected_scores = data.eta_policy if eta_comparison == "joint" else "fixed"
@@ -30,6 +35,8 @@ def summarize(path, eta_comparison=None):
             raise ValueError("The baseline must use eta 32")
         if not (data.eta_min.gt(0) & data.eta_min.le(data.eta_median) & data.eta_median.le(data.eta_max)).all():
             raise ValueError("Invalid eta summary")
+    else:
+        parameter, settings = "depth_limit", MODES
     expected = pd.MultiIndex.from_product(
         [DATASETS, settings, SEEDS], names=["dataset", parameter, "seed"]
     )
@@ -63,7 +70,7 @@ def summarize(path, eta_comparison=None):
     return pd.DataFrame(rows)
 
 
-def plot_changes(rows, path, eta_comparison=None):
+def plot_changes(rows, path, eta_comparison=None, *, candidate_window=None):
     chart = rows.sort_values("delta")
     colors = ["#2563a6" if delta > 0 else "#c45324" for delta in chart.delta]
     fig, ax = plt.subplots(figsize=(8.7, 5.4), layout="constrained")
@@ -71,7 +78,10 @@ def plot_changes(rows, path, eta_comparison=None):
     ax.axvline(0, color="#475569", linewidth=1)
     ax.grid(axis="x", alpha=0.2)
     ax.set_axisbelow(True)
-    if eta_comparison:
+    if candidate_window is not None:
+        ax.set(title=f"Training window {candidate_window} across 12 datasets",
+               xlabel=f"ROC AUC change (window {candidate_window} − window 2048)")
+    elif eta_comparison:
         score_label = {"joint": "adaptive score scale", "split-only": "fixed score scale",
                        "trimmed": "trimmed feature range"}[eta_comparison]
         ax.set(title=f"Adaptive eta across 12 datasets ({score_label})",
@@ -83,19 +93,37 @@ def plot_changes(rows, path, eta_comparison=None):
     plt.close(fig)
 
 
-def write_report(rows, path, eta_comparison=None):
+def write_report(rows, path, eta_comparison=None, *, candidate_window=None):
     improved = int((rows.delta > 0).sum())
     declined = int((rows.delta < 0).sum())
     tied = len(rows) - improved - declined
     median_delta = rows.delta.median()
+    mean_delta = rows.delta.mean()
+    criterion = "過半數資料集提升，且差值中位數大於零"
+    meets_criterion = improved > len(rows) / 2 and median_delta > 0
+    if candidate_window is not None:
+        criterion = "過半數資料集提升，且等權平均差值大於零"
+        meets_criterion = improved > len(rows) / 2 and mean_delta > 0
     if improved == len(rows):
         conclusion = "這 12 份資料的中位數都提升，仍需新資料確認。"
-    elif improved > len(rows) / 2 and median_delta > 0:
+    elif meets_criterion:
         conclusion = "這個設定在多數資料集上提升 AUC，仍有資料集退步。"
     else:
         conclusion = "這個設定未達到多數資料集改善的條件。"
     variant_comparison = ""
-    if eta_comparison:
+    if candidate_window is not None:
+        title = f"訓練視窗 2048 與 {candidate_window}"
+        threshold = max(0, log(candidate_window / 32, 4))
+        comparison = (f"把原始程式的訓練視窗從 2048 改為 {candidate_window}，切分門檻 η 固定 32。"
+                      f"深度門檻仍用原始程式的 log₄ 公式，滿視窗時對應的數值為 3 與 {threshold:g}。"
+                      f"模型每批更新後最多保留 {candidate_window} 筆。")
+        if candidate_window == 4096:
+            comparison += "先前 INSECTS 的整體 AUC 在 4096 時有提升，因此選它做跨資料集驗證。"
+        original, candidate = "視窗 2048", f"視窗 {candidate_window}"
+        related = "這裡比較整體 AUC。INSECTS 的滑動視窗 AUC 與 14 個種子的視窗實驗另有紀錄。[個別實驗](experiment_report.md)"
+        command_option = f" --candidate-window {candidate_window}"
+        artifact = window_comparison_name(candidate_window)
+    elif eta_comparison:
         shared_method = r"""論文第 6 節把自動選擇 $\eta$ 列為未來工作。$\eta$ 是葉節點分裂所需樣本數的基準。我們用資料集中程度選擇門檻，兩組都採用視窗 2048 和原始程式的 log₄ 深度公式。原版固定 $\eta=32$，自動版先用 32，之後每累積約一個視窗的新資料，就用最近 2048 筆重新估計。[論文](https://proceedings.mlr.press/v235/leveni24a.html)"""
         if eta_comparison == "trimmed":
             title = "自動選擇切分門檻 η"
@@ -152,7 +180,7 @@ def write_report(rows, path, eta_comparison=None):
 
 表中 AUC 是各設定 5 次的整體 ROC AUC 中位數，差值為 {candidate} 減 {original}。勝出次數用相同種子逐對比較。
 
-以「過半數資料集提升，且差值中位數大於零」判斷整體改善。結果為 **{improved} 份提升、{declined} 份下降、{tied} 份持平**，差值中位數為 **{median_delta:+.4f}**。每份資料等權平均的差值為 {rows.delta.mean():+.4f}。{conclusion}
+以「{criterion}」判斷整體改善。結果為 **{improved} 份提升、{declined} 份下降、{tied} 份持平**，差值中位數為 **{median_delta:+.4f}**。每份資料等權平均的差值為 {mean_delta:+.4f}。{conclusion}
 
 ![各資料集的 AUC 差值](../figures/{artifact}_benchmark.png)
 
@@ -173,14 +201,21 @@ python experiments/depth_benchmark_report.py{command_option}
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path)
-    parser.add_argument("--adaptive-eta", choices=["joint", "split-only", "trimmed"])
+    comparison = parser.add_mutually_exclusive_group()
+    comparison.add_argument("--adaptive-eta", choices=["joint", "split-only", "trimmed"])
+    comparison.add_argument("--candidate-window", type=int)
     args = parser.parse_args()
-    artifact = {None: "depth", "joint": "eta_joint", "split-only": "eta_split", "trimmed": "eta"}[args.adaptive_eta]
-    results_dir = RESULT_DIRS[args.adaptive_eta]
+    if args.candidate_window is not None:
+        if args.candidate_window < 1 or args.candidate_window == 2048:
+            parser.error("--candidate-window must be positive and differ from 2048")
+        artifact = results_dir = window_comparison_name(args.candidate_window)
+    else:
+        artifact = {None: "depth", "joint": "eta_joint", "split-only": "eta_split", "trimmed": "eta"}[args.adaptive_eta]
+        results_dir = RESULT_DIRS[args.adaptive_eta]
     source = args.input or ROOT / f"results/{results_dir}_benchmark/paired_auc.csv"
-    rows = summarize(source, args.adaptive_eta)
-    plot_changes(rows, ROOT / f"figures/{artifact}_benchmark.png", args.adaptive_eta)
-    write_report(rows, ROOT / f"docs/{artifact}_benchmark.md", args.adaptive_eta)
+    rows = summarize(source, args.adaptive_eta, candidate_window=args.candidate_window)
+    plot_changes(rows, ROOT / f"figures/{artifact}_benchmark.png", args.adaptive_eta, candidate_window=args.candidate_window)
+    write_report(rows, ROOT / f"docs/{artifact}_benchmark.md", args.adaptive_eta, candidate_window=args.candidate_window)
     evidence = ROOT / f"docs/experiment_evidence/{artifact}_seed_auc.csv"
     if source.resolve() != evidence.resolve():
         shutil.copyfile(source, evidence)

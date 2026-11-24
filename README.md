@@ -1,6 +1,6 @@
 # Online Isolation Forest 期末專題
 
-本專題重現 Leveni 等人的 Online Isolation Forest（ICML 2024），並在 12 份資料上比較自動選擇與固定切分門檻 η。[自動 η 實驗](docs/eta_benchmark.md) · [論文深度對照](docs/depth_benchmark.md) · [個別資料集報告](docs/experiment_report.md) · [實驗數據](docs/experiment_evidence/README.md) · [論文原始碼](https://github.com/ineveLoppiliF/Online-Isolation-Forest)
+本專題重現 Leveni 等人的 Online Isolation Forest（ICML 2024），並在 12 份資料上比較訓練視窗與切分門檻 η。[共用視窗實驗](docs/window_benchmark.md) · [自動 η 實驗](docs/eta_benchmark.md) · [論文深度對照](docs/depth_benchmark.md) · [個別資料集報告](docs/experiment_report.md) · [實驗數據](docs/experiment_evidence/README.md) · [論文原始碼](https://github.com/ineveLoppiliF/Online-Isolation-Forest)
 
 用模擬異常選擇 η 的實驗涵蓋 7 份資料。[校準方法與結果](docs/eta_calibration.md)
 
@@ -18,6 +18,7 @@ INSECTS 用相同的 14 個種子比較視窗。整體 ROC AUC 中位數由 **0.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python experiments/depth_benchmark.py --candidate-window 4096
 python experiments/depth_benchmark.py --adaptive-eta trimmed
 python experiments/run_experiment.py --dataset data/stationary/ifor/Annthyroid.csv --depth-limit paper --runs 30 --tag final_paper
 python experiments/run_experiment.py --dataset data/non-stationary/kqt/insects_ae-aegypti-female_cx-quinq-male_ae-albopictus-male.csv --window 16384 --no-shuffle --max-features 10 --runs 14 --tag final_w16384
